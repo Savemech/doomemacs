@@ -17,6 +17,14 @@ public class DoomArgvCapture {
  public static void Main(string[] args) {
   for(int i=0;i<args.Length;i++) args[i]=Convert.ToBase64String(Encoding.UTF8.GetBytes(args[i]));
   File.WriteAllLines(Environment.GetEnvironmentVariable("DOOM_ARGV_TEST"),args);
+  string stdinLog=Environment.GetEnvironmentVariable("DOOM_STDIN_TEST");
+  if(stdinLog!=null) {
+   using(Stream input=Console.OpenStandardInput())
+   using(MemoryStream bytes=new MemoryStream()) {
+    input.CopyTo(bytes);
+    File.WriteAllBytes(stdinLog,bytes.ToArray());
+   }
+  }
  }
 }
 '@
@@ -28,6 +36,17 @@ public class DoomArgvCapture {
     if ($actual.Count -ne $expected.Count) { throw 'Native argument count changed.' }
     for ($i = 0; $i -lt $expected.Count; $i++) { if ($actual[$i] -cne $expected[$i]) { throw "Native argv mismatch at $i" } }
     Write-Host 'PASS: Windows native arguments are preserved without shell evaluation.'
+
+    $inputLog = Join-Path $scratch 'stdin.bin'
+    $inputText = 'UTF-8 ' + [char]0x0444 + "`n"
+    $encoding = [Console]::InputEncoding
+    try {
+        [Console]::InputEncoding = [Text.Encoding]::UTF8
+        $result = Invoke-DoomNativeProcess -File $capture -InputText $inputText -Environment @{ DOOM_ARGV_TEST=$log; DOOM_STDIN_TEST=$inputLog }
+        $wanted = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($inputText))
+        if ($result.ExitCode -or [Convert]::ToBase64String([IO.File]::ReadAllBytes($inputLog)) -cne $wanted) { throw 'Native stdin gained a BOM or changed Unicode text.' }
+    } finally { [Console]::InputEncoding = $encoding }
+    Write-Host 'PASS: native stdin is UTF-8 without a BOM even with a UTF-8 console.'
 
     if (-not $Distribution) {
         Write-Host 'SKIP: real WSL tests require -Distribution; no user distribution is modified implicitly.'

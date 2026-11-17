@@ -7,6 +7,16 @@ function ConvertTo-DoomNativeArgument([AllowEmptyString()][string]$Argument) {
     return '"' + $escaped + '"'
 }
 
+function Start-DoomNativeProcess([Diagnostics.ProcessStartInfo]$Info) {
+    # .NET Framework has no StandardInputEncoding. Its redirected StreamWriter
+    # autoflushes a BOM during Start when Console.InputEncoding includes one.
+    $encoding = [Console]::InputEncoding
+    try {
+        if ($encoding.CodePage -eq 65001) { [Console]::InputEncoding = New-Object Text.UTF8Encoding $false }
+        return [Diagnostics.Process]::Start($Info)
+    } finally { [Console]::InputEncoding = $encoding }
+}
+
 function Invoke-DoomNativeProcess {
     param(
         [Parameter(Mandatory = $true)][string]$File,
@@ -32,20 +42,24 @@ function Invoke-DoomNativeProcess {
         if ($null -eq $Environment[$name]) { $info.EnvironmentVariables.Remove($name) }
         else { $info.EnvironmentVariables[$name] = [string]$Environment[$name] }
     }
-    $process = [Diagnostics.Process]::Start($info)
+    $process = Start-DoomNativeProcess $info
     $timer = [Diagnostics.Stopwatch]::StartNew()
     try {
         $stdout = $process.StandardOutput.ReadToEndAsync()
         $stderr = $process.StandardError.ReadToEndAsync()
+        $inputStream = $process.StandardInput.BaseStream
         if ($InputText) {
-            $write = $process.StandardInput.WriteAsync($InputText)
+            # Write UTF-8 bytes directly: the framework's stdin StreamWriter
+            # inherits the console encoding and may prepend a BOM on Close().
+            $inputBytes = [Text.Encoding]::UTF8.GetBytes($InputText)
+            $write = $inputStream.WriteAsync($inputBytes, 0, $inputBytes.Length)
             if ($TimeoutMilliseconds -eq 0) { $write.GetAwaiter().GetResult() }
             elseif (-not $write.Wait($TimeoutMilliseconds)) {
                 $process.Kill()
                 throw "Process stopped accepting input: $File"
             }
         }
-        $process.StandardInput.Close()
+        $inputStream.Close()
         if ($TimeoutMilliseconds -eq 0) { $process.WaitForExit() }
         elseif (-not $process.WaitForExit([math]::Max(1, $TimeoutMilliseconds - [int]$timer.ElapsedMilliseconds))) {
             $process.Kill()

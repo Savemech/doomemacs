@@ -81,11 +81,12 @@ function Invoke-DoomPackageSync {
         if ($null -eq $environment[$name]) { $info.EnvironmentVariables.Remove($name) }
         else { $info.EnvironmentVariables[$name] = [string]$environment[$name] }
     }
-    $process = [Diagnostics.Process]::Start($info)
+    $process = Start-DoomNativeProcess $info
     try {
         # EOF instead of a hanging prompt. Read both streams concurrently, so
         # a compiler filling stderr cannot deadlock a stdout reader.
-        $process.StandardInput.Close()
+        # Closing the StreamWriter can emit a UTF-8 BOM even without a write.
+        $process.StandardInput.BaseStream.Close()
         $streams = @($process.StandardOutput, $process.StandardError)
         $pending = @($streams[0].ReadLineAsync(), $streams[1].ReadLineAsync())
         while ($null -ne $pending[0] -or $null -ne $pending[1]) {

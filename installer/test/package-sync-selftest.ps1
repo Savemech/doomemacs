@@ -44,8 +44,15 @@ public class DoomLogFixture {
  }
 }
 '@
-    $records = @(Invoke-DoomPackageSync -Root $scratch -Config $scratch -Arguments @('sync') 6>&1)
-    if ($records[-1] -ne 7) { throw 'Streaming runner lost the child exit code.' }
+    $inputEncoding = [Console]::InputEncoding
+    try {
+        # GitHub's Windows runner uses UTF-8; an empty stdin must still be EOF.
+        [Console]::InputEncoding = [Text.Encoding]::UTF8
+        $records = @(Invoke-DoomPackageSync -Root $scratch -Config $scratch -Arguments @('sync') 6>&1)
+        $native = Invoke-DoomNativeProcess -File (Join-Path $scratch 'deps\git\usr\bin\sh.exe')
+        if ($native.ExitCode -ne 7) { throw "Native runner stdin was not empty: exit $($native.ExitCode)." }
+    } finally { [Console]::InputEncoding = $inputEncoding }
+    if ($records[-1] -ne 7) { throw "Streaming runner lost the child exit code: $($records[-1])." }
     $log = ($records[0..($records.Count - 2)] | Out-String)
     if ($log.Contains([string][char]27) -or $log -notmatch 'compiling 1' -or $log -notmatch 'stderr message') {
         throw 'Streaming runner lost output or leaked terminal controls.'
