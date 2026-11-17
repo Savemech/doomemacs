@@ -30,7 +30,7 @@ function New-Case([string]$RootState, [switch]$AlternateSpelling) {
         entries     = $entries
     }
     $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
-    return $root
+    return [IO.Path]::GetFullPath($root)
 }
 
 $rootA = $null

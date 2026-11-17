@@ -23,7 +23,7 @@ jobs:
       run:
         shell: powershell
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Fetch pinned build tools
         run: |
           & ./installer/build/fetch-build-tools.ps1
