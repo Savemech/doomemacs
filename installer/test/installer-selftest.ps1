@@ -15,7 +15,8 @@ if (-not (Test-Path -LiteralPath $MakeNsis)) { throw 'Pass -MakeNsis with the pa
 . (Join-Path $installerDir 'font-integration.ps1')
 
 $caseId = [guid]::NewGuid().ToString('N')
-$scratch = Join-Path $env:TEMP ('doom-nsis-' + $caseId)
+# Match the install engine's canonical paths, including runner TEMP's 8.3 alias.
+$scratch = [IO.Path]::GetFullPath((Join-Path $env:TEMP ('doom-nsis-' + $caseId)))
 $stage = Join-Path $scratch 'stage'
 $root = Join-Path $scratch 'installed'
 $profile = Join-Path $scratch 'profile'

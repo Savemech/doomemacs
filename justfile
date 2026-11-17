@@ -12,7 +12,7 @@ doctor:
 versions:
     @& ./installer/build/maintain.ps1 -Task versions; if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-# Download only pinned NSIS, zstd and 7zr into installer/build/tools.
+# Download pinned NSIS, zstd, 7zr and actionlint into installer/build/tools.
 bootstrap:
     @& ./installer/build/fetch-build-tools.ps1; if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
@@ -72,7 +72,7 @@ compile:
 compile-fast:
     @& ./installer/build/build-installer.ps1 -Stages compile -SkipCompress; if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-# PowerShell syntax, pin/build-policy checks, focused regressions and NSIS lifecycle.
+# Workflow/PowerShell syntax, pin/build checks, regressions and NSIS lifecycle.
 test:
     @& ./installer/build/maintain.ps1 -Task test; if ($LASTEXITCODE) { exit $LASTEXITCODE }
 

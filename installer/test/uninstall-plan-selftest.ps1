@@ -4,26 +4,28 @@ $here = $PSScriptRoot
 if (-not $here) { $here = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $uninstaller = Join-Path $here '..\uninstall-doom.ps1'
 
-function New-Case([string]$RootState) {
+function New-Case([string]$RootState, [switch]$AlternateSpelling) {
     $root = Join-Path $env:TEMP ('doom-uninst-plan-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $root | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $root 'bin') | Out-Null
     Set-Content -LiteralPath (Join-Path $root 'bin\doom.cmd') -Value '@echo off' -Encoding ascii
     $manifestPath = Join-Path $root 'install-manifest.json'
+    # GetFullPath normalizes these spellings, as it does runner TEMP's RUNNER~1.
+    $recordedRoot = if ($AlternateSpelling) { Join-Path $root '.' } else { $root }
     $entries = @(
-        [pscustomobject]@{ kind = 'dir'; path = $root; state = $RootState; note = 'install root' },
-        [pscustomobject]@{ kind = 'dir'; path = (Join-Path $root 'bin'); state = 'created'; note = '' },
-        [pscustomobject]@{ kind = 'file'; path = $manifestPath; state = 'created'; note = 'install ownership manifest' }
+        [pscustomobject]@{ kind = 'dir'; path = $recordedRoot; state = $RootState; note = 'install root' },
+        [pscustomobject]@{ kind = 'dir'; path = (Join-Path $recordedRoot 'bin'); state = 'created'; note = '' },
+        [pscustomobject]@{ kind = 'file'; path = (Join-Path $recordedRoot 'install-manifest.json'); state = 'created'; note = 'install ownership manifest' }
     )
     if ($RootState -eq 'preexisting') {
         # A preexisting root means root-level files must be recorded individually.
-        $entries += [pscustomobject]@{ kind = 'file'; path = (Join-Path $root 'bin\doom.cmd'); state = 'created'; note = '' }
+        $entries += [pscustomobject]@{ kind = 'file'; path = (Join-Path $recordedRoot 'bin\doom.cmd'); state = 'created'; note = '' }
     }
     $manifest = [pscustomobject]@{
         schema      = 1
         product     = 'Doom Emacs'
         version     = '0.0.0'
-        installRoot = $root
+        installRoot = $recordedRoot
         doomDir     = (Join-Path $env:TEMP 'doom-config-that-does-not-exist')
         entries     = $entries
     }
@@ -43,12 +45,12 @@ $successRegKey = $null
 $ownedRegKey = $null
 try {
     # Case A: manifest owns the root -> the root itself is planned for deletion.
-    $rootA = New-Case 'created'
+    $rootA = New-Case 'created' -AlternateSpelling
     $outA = & $uninstaller -InstallRoot $rootA -WhatIf 6>&1 | Out-String
     if ($outA -notmatch 'the installation itself') { throw "owned root not planned as the installation itself`n$outA" }
 
     # Case B: root predates the install -> root survives, our content goes.
-    $rootB = New-Case 'preexisting'
+    $rootB = New-Case 'preexisting' -AlternateSpelling
     $outB = & $uninstaller -InstallRoot $rootB -WhatIf 6>&1 | Out-String
     if ($outB -match 'the installation itself') { throw "preexisting root was planned for deletion`n$outB" }
     if ($outB -notmatch [regex]::Escape((Join-Path $rootB 'bin'))) { throw "created child dir missing from delete plan`n$outB" }
@@ -77,7 +79,7 @@ try {
 
     # A real removal failure must leave both recovery handles in place: the
     # manifest on disk and the Add/Remove Programs registry key.
-    $rootD = New-Case 'created'
+    $rootD = New-Case 'created' -AlternateSpelling
     $testRegKey = 'HKCU:\Software\DoomEmacsInstallerSelfTest\' + [guid]::NewGuid().ToString('N')
     New-Item -Path $testRegKey -Force | Out-Null
     $lockedFile = Join-Path $rootD 'bin\doom.cmd'
@@ -90,7 +92,7 @@ try {
 
     $lock.Dispose()
     $lock = $null
-    $rootE = New-Case 'preexisting'
+    $rootE = New-Case 'preexisting' -AlternateSpelling
     $successRegKey = 'HKCU:\Software\DoomEmacsInstallerSelfTest\' + [guid]::NewGuid().ToString('N')
     New-Item -Path $successRegKey -Force | Out-Null
     $outE = & $uninstaller -InstallRoot $rootE -Yes -RegistryKey $successRegKey 6>&1 | Out-String
@@ -101,7 +103,7 @@ try {
     if (Test-Path $successRegKey) { throw 'clean uninstall left its registry entry behind' }
     Write-Host 'PASS: a clean uninstall succeeds and keeps a preexisting root.'
 
-    $rootF = New-Case 'created'
+    $rootF = New-Case 'created' -AlternateSpelling
     $ownedRegKey = 'HKCU:\Software\DoomEmacsInstallerSelfTest\' + [guid]::NewGuid().ToString('N')
     New-Item -Path $ownedRegKey -Force | Out-Null
     $outF = & $uninstaller -InstallRoot $rootF -Yes -RegistryKey $ownedRegKey 6>&1 | Out-String

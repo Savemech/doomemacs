@@ -9,7 +9,7 @@ Requirements: Windows 10 or newer, Windows PowerShell 5.1, Git, =just=, Windows 
 #+begin_src powershell
 just                    # list commands; does not start a build
 just init               # exact module gitlink, never latest
-just bootstrap          # pinned portable NSIS, zstd and 7zr
+just bootstrap          # pinned portable NSIS, zstd, 7zr and actionlint
 just doctor
 just versions
 just build-fast         # complete uncompressed development installer
@@ -174,6 +174,8 @@ and exercises install, reinstall, legacy recovery, failed sync and removal. It
 uses a temporary profile and uninstall registry key. Its temporary user PATH
 entry is removed in =finally=. The CLI is a stub: this proves packaging and
 lifecycle behavior, not real package downloads or editor startup.
+
+=just test= also validates GitHub Actions YAML with pinned =actionlint=. The fork does not depend on the broken =doomemacs/ci@legacy= commit-lint workflow. The inherited scheduled issue triage is restricted to the upstream repository, so it does not close or lock threads in this fork.
 
 The snapshot/diff tools support before/after footprint inspection. A full clean
 Windows Sandbox installation, editor launch and removal cycle remains required

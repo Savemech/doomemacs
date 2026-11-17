@@ -76,6 +76,11 @@ switch ($Task) {
         return
     }
     'test' {
+        $lock=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'payloads.lock.json')) | ConvertFrom-Json
+        $actionlint=Get-DoomBuildToolPath $installer $lock 'actionlint'
+        $workflows=@(Get-ChildItem -LiteralPath (Join-Path $repo '.github\workflows') -File -Filter '*.yml' | ForEach-Object { $_.FullName })
+        & $actionlint @workflows
+        if ($LASTEXITCODE) { throw 'GitHub Actions workflow validation failed.' }
         $issues=@()
         Get-ChildItem -LiteralPath $installer -Recurse -Filter '*.ps1' | Where-Object { $_.FullName -notlike '*\test\results\*' } | ForEach-Object {
             $tokens=$null; $errors=$null
@@ -85,7 +90,6 @@ switch ($Task) {
         if ($issues.Count) { throw ($issues | Out-String) }
         foreach ($name in @('maintenance-selftest','env-path-selftest','install-guard-selftest','uninstall-plan-selftest','diff-selftest','wsl-bridge-selftest','wsl-selection-selftest','package-sync-selftest','font-integration-selftest')) { Invoke-Check $name }
         Invoke-Check 'snapshot' @('-SelfTest')
-        $lock=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'payloads.lock.json')) | ConvertFrom-Json
         Invoke-Check 'installer-selftest' @('-MakeNsis',(Get-DoomBuildToolPath $installer $lock 'nsis'))
         return
     }

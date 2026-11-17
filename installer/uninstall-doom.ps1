@@ -95,6 +95,16 @@ if (-not [string]::Equals($manifestRoot, $InstallRoot, [StringComparison]::Ordin
     throw "Manifest root '$manifestRoot' does not match requested install root '$InstallRoot'. Refusing to remove anything."
 }
 $mf.installRoot = $manifestRoot
+$manifestPath = Join-Path $manifestRoot $MANIFEST_FILE
+if ($mf.doomDir) { $mf.doomDir = [IO.Path]::GetFullPath([string]$mf.doomDir).TrimEnd('\') }
+# Normalize entries too: .NET can expand an existing 8.3 path such as RUNNER~1
+# while normalizing the root. Mixed spellings would lose ownership and could
+# remove the recovery manifest before another file's removal fails.
+foreach ($entry in $mf.entries) {
+    if ($entry.kind -in @('dir', 'file', 'shortcut')) {
+        $entry.path = [IO.Path]::GetFullPath([string]$entry.path).TrimEnd('\')
+    }
+}
 Write-Info "product : $($mf.product) $($mf.version)"
 Write-Info "root    : $($mf.installRoot)"
 Write-Info "config  : $($mf.doomDir)"
@@ -150,7 +160,7 @@ foreach ($e in $mf.entries) {
                 } else {
                     Add-Keep $e.path 'your Doom config - kept (use -Full to remove)'
                 }
-            } elseif ($e.state -eq 'created' -and $e.path -like "$($mf.installRoot)\*" -and (Test-Path $e.path)) {
+            } elseif ($e.state -eq 'created' -and $e.path.StartsWith($mf.installRoot + '\', [StringComparison]::OrdinalIgnoreCase) -and (Test-Path $e.path)) {
                 # Remove owned children first, even when the root is ours, so a
                 # lock fails synchronously while the manifest is still present.
                 Add-Plan 'dir' $e.path 'installed content'

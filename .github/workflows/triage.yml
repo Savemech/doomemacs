@@ -4,4 +4,5 @@ on:
     - cron: '0 */12 * * *'  # twice, daily
 jobs:
   triage:
-    use: doomemacs/ci/.github/workflows/triage.yml@legacy
+    if: github.repository == 'doomemacs/core'
+    uses: doomemacs/ci/.github/workflows/triage.yml@legacy
