@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][ValidateSet('doctor','versions','init','upstream-fetch','upstream-merge','pin-modules','bump-release','release-check','restage','test','test-runtime','test-wsl','verify','artifacts')][string]$Task,
-    [string]$Ref='origin/master', [string]$Distribution
+    [Parameter(Mandatory=$true)][ValidateSet('doctor','versions','init','upstream-fetch','upstream-merge','pin-modules','bump-release','release-check','restage','test','test-runtime','test-defaults','test-wsl','verify','artifacts')][string]$Task,
+    [string]$Ref='origin/master', [string]$Distribution, [string]$PackageRoot
 )
 $ErrorActionPreference='Stop'
 $repo=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -120,7 +120,14 @@ switch ($Task) {
         Initialize-DoomStage $context $context.Stage
         Invoke-Check 'runtime-smoke-selftest' @('-InstallRoot',$context.Stage)
         Invoke-Check 'git-tools-selftest' @('-InstallRoot',$context.Stage)
+        Invoke-Check 'default-runtime-selftest' @('-InstallRoot',$context.Stage)
         Invoke-Check 'windows-client-selftest' @('-EmacsRoot',(Join-Path $context.Stage 'emacs'))
+    }
+    'test-defaults' {
+        Initialize-DoomStage $context $context.Stage
+        $arguments=@('-InstallRoot',$context.Stage)
+        if ($PackageRoot) { $arguments+=@('-PackageRoot',$PackageRoot) }
+        Invoke-Check 'default-runtime-selftest' $arguments
     }
     'test-wsl' {
         if (-not $Distribution) { throw 'Choose a WSL distribution: just test-wsl Ubuntu' }

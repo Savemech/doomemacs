@@ -54,6 +54,17 @@ function Update-DoomGitHubPayloads($Lock, [string]$Component, $Release) {
                 $p.installSubdir="fonts/$($spec[1])-v$version"
             }
         }
+        { $_ -in @('zstd','xz','7zip','shellcheck','pandoc') } {
+            $patterns=@{
+                zstd='^zstd-v[0-9.]+-win64\.zip$'; xz='^xz-[0-9.]+-windows\.7z$'
+                '7zip'='^7z[0-9]+-extra\.7z$'; shellcheck='^shellcheck-v[0-9.]+\.zip$'
+                pandoc='^pandoc-[0-9.]+-windows-x86_64\.zip$'
+            }
+            $asset=Get-DoomReleaseAsset $Release $patterns[$Component]
+            $id=if ($Component -eq 'zstd') { 'zstd-runtime' } else { $Component }
+            $payload=@($Lock.payloads | Where-Object id -eq $id)[0]
+            Set-DoomPayload $payload $Release.tag_name.TrimStart('v') $asset.browser_download_url $asset.name $asset.digest $asset.size
+        }
     }
 }
 function Get-DoomEmacsRelease([string]$Version='latest') {

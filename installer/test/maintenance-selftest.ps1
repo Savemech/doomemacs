@@ -37,6 +37,22 @@ $fontRelease=[pscustomobject]@{tag_name='v99.2';assets=@(
 Update-DoomGitHubPayloads $lock fonts $fontRelease
 if (@($lock.payloads | Where-Object { $_.fontFamily -and $_.installSubdir -match 'v99.2$' }).Count -ne 2) { throw 'Font paths retained an old version.' }
 Write-Host 'PASS: coupled Git releases, font paths, hashes and path guards.'
+$utilityCases=@(
+    @('zstd','zstd-runtime','zstd-v99.1-win64.zip'),
+    @('xz','xz','xz-99.1-windows.7z'),
+    @('7zip','7zip','7z991-extra.7z'),
+    @('shellcheck','shellcheck','shellcheck-v99.1.zip'),
+    @('pandoc','pandoc','pandoc-99.1-windows-x86_64.zip')
+)
+foreach ($case in $utilityCases) {
+    $candidate=New-TestLock
+    $release=[pscustomobject]@{tag_name='v99.1';assets=@([pscustomobject]@{name=$case[2];browser_download_url=('https://example.invalid/'+$case[2]);digest=('sha256:'+('e'*64));size=12})}
+    Update-DoomGitHubPayloads $candidate $case[0] $release
+    $updated=@($candidate.payloads | Where-Object id -eq $case[1])[0]
+    if ($updated.version -ne '99.1' -or $updated.sha256 -ne ('e'*64)) { throw "Utility update failed: $($case[0])" }
+    Test-DoomPayloadLock $candidate
+}
+Write-Host 'PASS: archive, compression, shell checker and Markdown compiler pins update independently.'
 $scratch=Join-Path $env:TEMP ('doom-maintenance-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {

@@ -21,7 +21,7 @@ set "HOME=%USERPROFILE%"
 
 rem Bundled tools first, so a sealed install never silently picks up a different
 rem Emacs, git or ripgrep that happens to be on the user's PATH.
-set "PATH=%DOOM_ROOT%\emacs\bin;%DOOM_ROOT%\deps\git\cmd;%DOOM_ROOT%\deps\git\usr\bin;%DOOM_ROOT%\deps\rg;%DOOM_ROOT%\deps\fd;%PATH%"
+set "PATH=%DOOM_ROOT%\emacs\bin;%DOOM_ROOT%\deps\zstd;%DOOM_ROOT%\deps\xz\bin_x86-64;%DOOM_ROOT%\deps\7zip\x64;%DOOM_ROOT%\deps\shellcheck;%DOOM_ROOT%\deps\pandoc;%DOOM_ROOT%\deps\git\cmd;%DOOM_ROOT%\deps\git\usr\bin;%DOOM_ROOT%\deps\rg;%DOOM_ROOT%\deps\fd;%PATH%"
 
 rem ---------------------------------------------------------------------------
 rem Storage mode, decided by whether the install tree is writable.

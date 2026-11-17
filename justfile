@@ -36,7 +36,7 @@ pin-modules:
 updates $component="all":
     @& ./installer/build/update-payloads.ps1 -Component $env:component -Check; if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
-# Update reviewed pins: emacs/git/ripgrep/fd/fonts/toolchain/all; optional version/tag.
+# Update reviewed runtime pins (e.g. emacs/git/toolchain/zstd/pandoc/all); optional tag.
 update $component $payload_version="latest":
     @& ./installer/build/update-payloads.ps1 -Component $env:component -Version $env:payload_version; if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
@@ -79,6 +79,10 @@ test:
 # Real bundled Emacs/native compiler, Git tools and GUI client in temporary homes.
 test-runtime:
     @& ./installer/build/maintain.ps1 -Task test-runtime; if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+# Exercise default editing tools; optional synced straight directory adds real undo persistence.
+test-defaults $package_root="":
+    @& ./installer/build/maintain.ps1 -Task test-defaults -PackageRoot $env:package_root; if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
 # Real WSL tests with an explicitly chosen distribution and an isolated test copy.
 test-wsl $distribution:

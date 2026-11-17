@@ -131,7 +131,7 @@ Var ConfigStatus
 !define MUI_UNICON "files\doom.ico"
 
 !define MUI_WELCOMEPAGE_TITLE "${PRODUCT} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "This installs ${PRODUCT}, GNU Emacs ${EMACS_VERSION}, git, ripgrep, fd, and a native-compilation toolchain.$\r$\n$\r$\nInternet access is required to download Emacs packages during setup.$\r$\n$\r$\nIt installs for your user account only, without administrator rights.$\r$\n$\r$\nIf Doom is already installed, the next page offers reinstall or removal. Your existing Doom configuration is kept."
+!define MUI_WELCOMEPAGE_TEXT "This installs ${PRODUCT}, GNU Emacs ${EMACS_VERSION}, Git, search and archive tools, ShellCheck, Pandoc, fonts and a native compiler.$\r$\n$\r$\nInternet access is required to download Emacs packages during setup.$\r$\n$\r$\nIt installs for your user account only, without administrator rights.$\r$\n$\r$\nIf Doom is already installed, the next page offers reinstall or removal. Your existing Doom configuration is kept."
 
 !define MUI_COMPONENTSPAGE_SMALLDESC
 !insertmacro MUI_PAGE_WELCOME
@@ -425,6 +425,11 @@ Function .onInit
   ${EndIf}
 
 
+  ReadRegStr $0 HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion" "CurrentBuildNumber"
+  ${If} $0 < 18362
+    MessageBox MB_ICONSTOP "${PRODUCT} requires Windows 10 version 1903 or newer for Unicode process paths." /SD IDOK
+    Abort
+  ${EndIf}
   InitPluginsDir
   ; Include management scripts directly from source, even for compile-only builds
   ; using an older staging tree. Missing scripts must fail the build.
@@ -512,7 +517,7 @@ Section "Doom Emacs" SecMain
     StrCpy $RootOwnerArg " -OwnInstallRoot"
   ${EndIf}
 
-  DetailPrint "Unpacking Emacs, Doom and dependencies (about 1.4 GB)..."
+  DetailPrint "Unpacking Emacs, Doom and bundled runtime tools..."
   SetOutPath "$INSTDIR"
   File /r /x ".doom-build-stage.json" /x ".build-inventory.json" "${STAGING}\*.*"
   ; Always overwrite any stale scripts shipped in the staging tree.
@@ -634,7 +639,7 @@ Section "-Configure" SecConfigure
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}      "Emacs ${EMACS_VERSION}, Doom, git, ripgrep, fd and a native-compilation toolchain. Everything needed to run, with no other downloads. Required."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}      "Emacs ${EMACS_VERSION}, Doom, Git, search/archive tools, Bash, ShellCheck, Pandoc and a native compiler. Language SDKs and optional features may need additional tools."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecAOT}       "Natively compile every package during installation, so Doom is fast from the very first launch. Leave this off and packages compile gradually in the background over your first few sessions instead. Roughly doubles how long installation takes."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop}   "Put a Doom Emacs shortcut on your Desktop."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Put a Doom Emacs shortcut in your Start Menu."

@@ -1,6 +1,6 @@
-# Windows CRT argv otherwise converts Unicode filenames through the system ANSI
-# code page before emacsclient can send them. Preserve the original manifest and
-# opt this executable into UTF-8 on Windows 10 1903+.
+# The Windows CRT and CreateProcessA otherwise convert filenames through the
+# system ANSI code page. Opt editors, launchers and clients into UTF-8 on Windows
+# 10 1903+, preserving every other setting in the original application manifest.
 [CmdletBinding()]
 param([Parameter(Mandatory = $true)][string]$ExePath)
 $ErrorActionPreference = 'Stop'
@@ -29,7 +29,7 @@ $module = [DoomInstaller.ManifestResource]::LoadLibraryEx($ExePath, [IntPtr]::Ze
 if ($module -eq [IntPtr]::Zero) { throw "Cannot load executable resource table: $ExePath" }
 try {
     $resource = [DoomInstaller.ManifestResource]::FindResource($module, [IntPtr]1, [IntPtr]24)
-    if ($resource -eq [IntPtr]::Zero) { throw 'The client executable has no expected RT_MANIFEST resource.' }
+    if ($resource -eq [IntPtr]::Zero) { throw 'The executable has no expected RT_MANIFEST resource.' }
     $pointer = [DoomInstaller.ManifestResource]::LockResource([DoomInstaller.ManifestResource]::LoadResource($module, $resource))
     $size = [DoomInstaller.ManifestResource]::SizeofResource($module, $resource)
     $bytes = New-Object byte[] $size
@@ -52,6 +52,7 @@ if (-not $settings) {
     [void]$application.AppendChild($settings)
 }
 $codePage = $settings.SelectSingleNode('ws:activeCodePage', $namespaces)
+if ($codePage -and $codePage.InnerText -eq 'UTF-8') { return }
 if (-not $codePage) {
     $codePage = $manifest.CreateElement('activeCodePage', $windows)
     [void]$settings.AppendChild($codePage)
@@ -59,15 +60,15 @@ if (-not $codePage) {
 $codePage.InnerText = 'UTF-8'
 $bytes = [Text.Encoding]::UTF8.GetBytes($manifest.OuterXml)
 $update = [DoomInstaller.ManifestResource]::BeginUpdateResource($ExePath, $false)
-if ($update -eq [IntPtr]::Zero) { throw "Cannot update client manifest: $ExePath" }
+if ($update -eq [IntPtr]::Zero) { throw "Cannot update executable manifest: $ExePath" }
 $saved = $false
 try {
     if (-not [DoomInstaller.ManifestResource]::UpdateResource($update, [IntPtr]24, [IntPtr]1, 0, $bytes, $bytes.Length)) {
-        throw 'Updating the client UTF-8 manifest failed.'
+        throw 'Updating the executable UTF-8 manifest failed.'
     }
     $saved = [DoomInstaller.ManifestResource]::EndUpdateResource($update, $false)
     $update = [IntPtr]::Zero
-    if (-not $saved) { throw 'Saving the client UTF-8 manifest failed.' }
+    if (-not $saved) { throw 'Saving the executable UTF-8 manifest failed.' }
 } finally {
     if ($update -ne [IntPtr]::Zero) { [void][DoomInstaller.ManifestResource]::EndUpdateResource($update, $true) }
 }

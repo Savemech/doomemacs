@@ -1,0 +1,59 @@
+#+TITLE: Windows default runtime audit
+
+Scope: =static/init.example.el= and its enabled modules, Doom core, and the bundled GNU Emacs 31.1 Windows runtime. The module source is pinned by =build/payloads.lock.json=. This is a dependency/operation audit, not an assertion that every interactive command or third-party module has been exhaustively tested.
+
+* Standard editing and navigation
+
+| Features / enabled modules | Dependency and Windows behavior | Validation |
+|----------------------------+---------------------------------+------------|
+| Save, read, backups, autosave | Emacs file I/O; Unicode process paths additionally need a UTF-8 application manifest | Compressed save/read in a directory with spaces and Cyrillic |
+| =:emacs undo=, =undo-fu-session= | =zstd= for .zst, =gzip= for fallback/existing .gz histories; =bzip2= and =xz= for supported alternatives | Compressed round trips; real package save, recover and undo with an explicit synced package directory |
+| Compressed Lisp/data files | Emacs =jka-compr= runs compression programs, not an Emacs native compression library | .gz, .bz2, .xz and .zst round trips |
+| Dired, Dirvish file navigation | Built-in ls-lisp on Windows; GNU ls/find/coreutils also bundled with MinGit | Dired listing in a Unicode directory |
+| Archive mode ZIP and 7z; Dired compression | =unzip= and native =7za=/=7z=. Traditional =gunzip=, =bunzip2=, =unxz= and =unzstd= aliases are included. The stock Dired ZIP rule is adapted to 7-Zip; custom rules are preserved | Archive mode extraction; actual Dired compress/uncompress round trips and ZIP creation |
+| Tar mode | Windows native =tar.exe= plus Emacs Tar mode | Create tar, open and parse in Emacs |
+| Buffer/file compare, Ediff, diff gutter | Bundled GNU =diff= and =diff3=; apply edits with =patch= | Diff generation, patch application and content verification |
+| Projects, Vertico/Consult, lookup fallback | Native =fd= and =rg=, GNU find/grep, Git | Search filenames and content with host tools excluded |
+| Magit and =:emacs vc= | MinGit; =which= and =cygpath= from the exact same PortableGit version | Actual Magit discovery/PATH alias; repository init/commit and clean/edited Emacs VC state |
+| SSH Git remotes / Tramp | Matching =ssh=, agent tools, =ssh-keygen=, =scp= and =sftp= | Generate a temporary key; no network access or personal keys used |
+| Doom CLI, reload, shell commands | Bundled =sh=; Windows PowerShell for =bin/doom.ps1=; OS curl/tar | Real WSL-to-Windows CLI separately tested; reload migration/download side effects aren't run by this smoke test |
+| =:lang sh= completion/evaluation | Native Bash. Windows System32's bash.exe is a WSL launcher and is deliberately shadowed | Bash version assertion and actual pipeline through grep/sed/awk |
+| =:lang sh= syntax checking | Native ShellCheck, required with the default syntax checker module | Real shell diagnostic SC2086 |
+| =:lang markdown= preview/export | Native Pandoc, one of Doom's default supported compilers | Load and execute the actual module's Pandoc handler and inspect HTML |
+| =:lang org= HTML export, agenda, plain text | Emacs Lisp/Org; Babel evaluation needs the selected language runtime | Org HTML export; Emacs Lisp and Bash available |
+| Help/Info | Manuals shipped with GNU Emacs; gzip for compressed manuals | Open the bundled Emacs Info manual |
+| Corfu, Evil, snippets, templates, folding, whitespace, electric | Lisp packages / built-in functionality; no additional external executable for default settings | Covered by source dependency review; full interactive behavior is not automated here |
+| Doom UI, dashboard, modeline, popups, workspaces | Emacs GUI and Lisp packages; Meslo/Symbols fonts for glyphs | Existing GUI/client and font lifecycle checks |
+| Native package compilation | Bundled matching GCC/libgccjit, linker, CRT and runtime dependencies | Compile and execute native Lisp in =just test-runtime= |
+
+* Additional capabilities
+
+These are explicit extra capabilities, not reasons to install every toolchain on every machine. =doom doctor= checks enabled modules; language runtimes and services should match the user's projects.
+
+| Capability | Additional dependency |
+|------------+-----------------------|
+| Code formatting, =:editor format= | Formatter for each language; shell formatting uses =shfmt= |
+| LSP / Eglot | Chosen language server and project SDK; disabled in the example config |
+| Org PDF/LaTeX export | TeX distribution and requested fonts/packages; Pandoc alone does not supply TeX |
+| Org diagram/plot blocks | Graphviz/gnuplot/PlantUML or the selected Babel language runtime |
+| Dirvish / image-dired extra PDF, video and image thumbnails | Depending on preview dispatcher: Poppler, ffmpeg, ImageMagick; ordinary file navigation works without them |
+| Spellchecking / grammar | Hunspell/Aspell dictionaries or LanguageTool; not enabled by default |
+| Signed/encrypted Git commits and =.gpg= files | User-managed GnuPG and keys; no keyring is created or imported by setup |
+| Unix man pages / offline dictionary / docsets | Optional man pages and renderer, WordNet, or docsets/sqlite. Emacs Info and online lookup remain available |
+| Remote editing / Git remotes | Reachable remote machine/service, authentication and trust configuration; setup does not generate real user keys or accept host keys |
+| Terminal emulation | Native Windows cannot attach a terminal frame to the GUI process. WSL bridge behavior is documented separately |
+
+* Running the audit
+
+#+begin_src powershell
+just build-fast
+just test-defaults
+# Optional: read an existing package source tree, while storing all test files
+# and undo history under a new temporary home, not the real configuration:
+just test-defaults "$env:LOCALAPPDATA\Programs\DoomEmacs\doom\.local\straight"
+just test-runtime
+#+end_src
+
+The tests remove host package-manager, Git and WSL launcher directories from PATH. They require bundled programs to resolve within the selected application root and run operations in a temporary directory with spaces and a Cyrillic character. The same core tests run in a fresh GitHub Windows runner. All test artifacts are kept for inspection; no user configuration or history is migrated, overwritten or cleaned.
+
+New runtime components have pinned archives and are included by =just updates= / =just update all=. Individual components are =zstd=, =xz=, =7zip=, =shellcheck= and =pandoc=. PortableGit support tools update together with MinGit. A broken host shim can no longer satisfy these dependencies because bundle paths take precedence in every launcher.

@@ -6,7 +6,9 @@ function Get-DoomBridgeEnvironment([string]$Root, [string]$DoomDir) {
         DOOMDIR = $DoomDir
         DOOMPROFILE = $null
         ALTERNATE_EDITOR = $null
-        PATH = ((Join-Path $Root 'emacs\bin') + ';' + (Join-Path $Root 'deps\git\cmd') + ';' +
+        PATH = ((Join-Path $Root 'emacs\bin') + ';' + (Join-Path $Root 'deps\zstd') + ';' +
+            (Join-Path $Root 'deps\xz\bin_x86-64') + ';' + (Join-Path $Root 'deps\7zip\x64') + ';' +
+            (Join-Path $Root 'deps\shellcheck') + ';' + (Join-Path $Root 'deps\pandoc') + ';' + (Join-Path $Root 'deps\git\cmd') + ';' +
             (Join-Path $Root 'deps\git\usr\bin') + ';' + (Join-Path $Root 'deps\rg') + ';' +
             (Join-Path $Root 'deps\fd') + ';' + $env:Path)
     }

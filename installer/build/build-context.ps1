@@ -18,7 +18,7 @@ function Test-DoomPayloadLock($Lock) {
         if ($p.sha256 -notmatch '^[a-fA-F0-9]{64}$') { throw "Unpinned SHA256: $($p.id)" }
         if (-not $p.filename -or -not $p.version -or $p.url -notmatch '^https://' -or [IO.Path]::GetFileName($p.filename) -ne $p.filename -or $p.filename -match '[\\/:]|^\.\.?$') { throw "Invalid download location: $($p.id)" }
     }
-    foreach ($required in @('emacs','git','git-shell-tools','ripgrep','fd','gcc','libgccjit','binutils','crt','winpthreads','meslo-font','symbols-font','nsis','zstd','7zr')) {
+    foreach ($required in @('emacs','git','git-shell-tools','ripgrep','fd','gcc','libgccjit','binutils','crt','winpthreads','meslo-font','symbols-font','zstd-runtime','xz','7zip','shellcheck','pandoc','nsis','zstd','7zr')) {
         if (-not $ids.ContainsKey($required)) { throw "Missing required component: $required" }
     }
     foreach ($tool in $Lock.buildTools) {

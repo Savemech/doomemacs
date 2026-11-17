@@ -32,3 +32,24 @@ jobs:
         run: |
           & ./installer/build/maintain.ps1 -Task test
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  default-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: true
+      - name: Stage the pinned runtime on a fresh machine
+        run: |
+          $env:DOOM_BUILD_ROOT = Join-Path $env:RUNNER_TEMP 'doom-build'
+          & ./installer/build/build-installer.ps1 -Stages fetch,stage
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Exercise default file, archive, search and editing operations
+        run: |
+          $env:DOOM_BUILD_ROOT = Join-Path $env:RUNNER_TEMP 'doom-build'
+          & ./installer/build/maintain.ps1 -Task test-defaults
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

@@ -1,6 +1,7 @@
 ;;; server.el --- Windows-local server for the optional WSL client -*- lexical-binding: t; -*-
 
 (require 'server)
+(load (expand-file-name "runtime.el" (file-name-directory (or load-file-name buffer-file-name))) nil t)
 (let* ((bridge-dir (file-name-directory (or load-file-name buffer-file-name)))
        (root (file-name-directory (directory-file-name bridge-dir))))
   (setq server-name "doom-windows"

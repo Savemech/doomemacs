@@ -1,6 +1,6 @@
 Additional Git shell utilities
 
-which.exe and cygpath.exe come unchanged from the PortableGit x86_64 release
+Shell, compression, archive, patch, pager and SSH helpers come unchanged from the PortableGit x86_64 release
 matching the bundled MinGit. See build-info.json in the installation root for
 the exact release URL, version and archive SHA-256.
 
@@ -9,6 +9,7 @@ The matching MinGit distribution provides their MSYS runtime.
 
 Upstream projects and source repositories:
 GNU which: https://savannah.gnu.org/projects/which/
+Git for Windows package build sources: https://github.com/git-for-windows/MSYS2-packages
 Git for Windows MSYS2 runtime (cygpath):
 https://github.com/git-for-windows/msys2-runtime
 

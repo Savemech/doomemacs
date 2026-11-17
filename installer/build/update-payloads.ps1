@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('all','emacs','git','ripgrep','fd','fonts','toolchain')][string]$Component='all',
+    [ValidateSet('all','emacs','git','ripgrep','fd','fonts','toolchain','zstd','xz','7zip','shellcheck','pandoc')][string]$Component='all',
     [string]$Version='latest', [switch]$Check, [string]$LockFile, [string]$CacheDir
 )
 $ErrorActionPreference='Stop'
@@ -12,7 +12,7 @@ if ($Component -in @('all','toolchain') -and $Version -ne 'latest') { throw 'Use
 $original=[IO.File]::ReadAllText($LockFile)
 $before=$original | ConvertFrom-Json
 $candidate=$original | ConvertFrom-Json
-$components=if ($Component -eq 'all') { @('emacs','git','ripgrep','fd','fonts','toolchain') } else { @($Component) }
+$components=if ($Component -eq 'all') { @('emacs','git','ripgrep','fd','fonts','toolchain','zstd','xz','7zip','shellcheck','pandoc') } else { @($Component) }
 foreach ($item in $components) {
     Write-Host "Checking $item..."
     switch ($item) {
@@ -31,12 +31,12 @@ foreach ($item in $components) {
             $candidate.payloads=@($candidate.payloads | Where-Object { $_.id -notin @('gcc','libgccjit','binutils','crt','winpthreads') -and $_.id -notlike 'ucrt-*' })+$packages
         }
         default {
-            $repository=@{git='git-for-windows/git';ripgrep='BurntSushi/ripgrep';fd='sharkdp/fd';fonts='ryanoasis/nerd-fonts'}[$item]
+            $repository=@{git='git-for-windows/git';ripgrep='BurntSushi/ripgrep';fd='sharkdp/fd';fonts='ryanoasis/nerd-fonts';zstd='facebook/zstd';xz='tukaani-project/xz';'7zip'='ip7z/7zip';shellcheck='koalaman/shellcheck';pandoc='jgm/pandoc'}[$item]
             $tag=$Version
             if ($tag -ne 'latest') {
                 if ($item -eq 'git' -and $tag -match '^(\d+\.\d+\.\d+)(?:\.(\d+))?$') {
                     $revision=if ($Matches[2]) { $Matches[2] } else { '1' }; $tag="v$($Matches[1]).windows.$revision"
-                } elseif ($item -in @('fd','fonts') -and -not $tag.StartsWith('v')) { $tag='v'+$tag }
+                } elseif ($item -in @('fd','fonts','zstd','xz','shellcheck') -and -not $tag.StartsWith('v')) { $tag='v'+$tag }
             }
             Update-DoomGitHubPayloads $candidate $item (Get-DoomGitHubRelease $repository $tag)
         }

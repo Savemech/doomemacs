@@ -66,8 +66,8 @@ rem    trampolines compiled during early startup.
 rem
 rem Requires Emacs 29+; we bundle 31.1.
 if exist "%DOOM_ROOT%\wsl-bridge.json" (
-    start "" "%RUNEMACS%" --init-directory="%EMACSDIR%" --load="%DOOM_ROOT%\bridge\server.el" %*
+    start "" "%RUNEMACS%" --init-directory="%EMACSDIR%" --load="%DOOM_ROOT%\bridge\runtime.el" --load="%DOOM_ROOT%\bridge\server.el" %*
 ) else (
-    start "" "%RUNEMACS%" --init-directory="%EMACSDIR%" %*
+    start "" "%RUNEMACS%" --init-directory="%EMACSDIR%" --load="%DOOM_ROOT%\bridge\runtime.el" %*
 )
 exit /b 0

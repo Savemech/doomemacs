@@ -68,7 +68,10 @@ function Get-ZipCommonRoot {
         $first = ($e.FullName -split '/')[0]
         if ($first) { $roots[$first] = $true }
     }
-    if ($roots.Count -eq 1) { return @($roots.Keys)[0] }
+    if ($roots.Count -eq 1) {
+        $root = @($roots.Keys)[0]
+        if (-not @($Zip.Entries | Where-Object { $_.FullName -ne ($root + '/') -and -not $_.FullName.StartsWith($root + '/') }).Count) { return $root }
+    }
     return $null
 }
 
@@ -93,7 +96,8 @@ function Expand-ZipPayload {
             }
             if (-not $rel) { continue }
             if ($Files -and $Files -cnotcontains $rel) { continue }
-            $out = Join-Path $Dest ($rel -replace '/', '\')
+            $out = [IO.Path]::GetFullPath((Join-Path $Dest ($rel -replace '/', '\')))
+            if (-not $out.StartsWith([IO.Path]::GetFullPath($Dest).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'ZIP member escapes its destination.' }
 
             if ($e.Length -eq 0 -and $e.FullName.EndsWith('/')) {
                 if (-not (Test-Path $out)) { New-Item -ItemType Directory -Force -Path $out | Out-Null }
@@ -143,14 +147,14 @@ function Expand-Msys2Payload {
     return ($after - $before)
 }
 
-function Expand-PortableGitTools {
+function Expand-7ZipPayload {
     param([string]$Archive, [string]$Dest, [string[]]$Files)
     $exe = Get-DoomBuildToolPath -InstallerDir (Split-Path -Parent $scriptDir) -Lock $lock -Id '7zr'
     # Extract as an archive; never execute PortableGit's self-extracting program.
     & $exe x -y -bso0 -bsp0 "-o$Dest" $Archive @Files
     if ($LASTEXITCODE) { throw "PortableGit support extraction failed ($LASTEXITCODE)." }
     foreach ($file in $Files) {
-        if (-not (Test-Path -LiteralPath (Join-Path $Dest $file))) { throw "PortableGit tool missing: $file" }
+        if (-not (Test-Path -Path (Join-Path $Dest $file))) { throw "Archive member missing: $file" }
     }
     return $Files.Count
 }
@@ -205,8 +209,8 @@ foreach ($p in $lock.payloads) {
 
         if ($p.filename -like '*.zip') {
             $n = Expand-ZipPayload -Archive $archive -Dest $dest -LockSaysStrip ([bool]$p.stripRoot) -Files $p.files
-        } elseif ($p.filename -like '*.7z.exe') {
-            $n = Expand-PortableGitTools -Archive $archive -Dest $dest -Files $p.files
+        } elseif ($p.filename -like '*.7z.exe' -or $p.filename -like '*.7z') {
+            $n = Expand-7ZipPayload -Archive $archive -Dest $dest -Files $p.files
         } elseif ($p.filename -like '*.pkg.tar.zst') {
             $n = Expand-Msys2Payload -Archive $archive -Dest $dest -Zstd $zstd
         } else {
@@ -260,6 +264,19 @@ $fonts = foreach ($p in @($lock.payloads | Where-Object fontFamily)) {
 Write-DoomJson (Join-Path $StagingDir 'fonts\manifest.json') @{schema=1;fonts=@($fonts)}
 Write-DoomJson (Join-Path $StagingDir 'build-info.json') @{schema=1;fingerprint=$context.Fingerprint;lock=$lock}
 
+# These programs select decompression mode by argv[0]. Dired invokes the
+# traditional names directly, and its 7z commands do not look for 7za.
+foreach ($alias in @(
+    @('deps/git/usr/bin/bzip2.exe','deps/git/usr/bin/bunzip2.exe'),
+    @('deps/git/usr/bin/gzip.exe','deps/git/usr/bin/gunzip.exe'),
+    @('deps/git/usr/bin/gzip.exe','deps/git/usr/bin/uncompress.exe'),
+    @('deps/xz/bin_x86-64/xz.exe','deps/xz/bin_x86-64/unxz.exe'),
+    @('deps/zstd/zstd.exe','deps/zstd/unzstd.exe'),
+    @('deps/7zip/x64/7za.exe','deps/7zip/x64/7z.exe')
+)) {
+    Copy-Item -LiteralPath (Join-Path $StagingDir $alias[0]) -Destination (Join-Path $StagingDir $alias[1]) -Force
+}
+
 Write-Stage 'Configuring bundled git'
 
 # The deepest path in a real install came from a git clone, not from our own
@@ -286,8 +303,14 @@ if (Test-Path $gitCfg) {
 
 Write-Stage 'Branding executables'
 
-foreach ($name in @('emacsclient.exe', 'emacsclientw.exe')) {
+foreach ($name in @('emacsclient.exe', 'emacsclientw.exe', 'emacs.exe', 'runemacs.exe', "emacs-$($context.EmacsVersion).exe")) {
     & (Join-Path $scriptDir 'set-client-utf8.ps1') -ExePath (Join-Path $StagingDir ('emacs\bin\' + $name))
+}
+foreach ($proxy in @(Get-ChildItem -LiteralPath (Join-Path $StagingDir 'emacs\libexec') -Recurse -Filter 'cmdproxy.exe' -File)) {
+    & (Join-Path $scriptDir 'set-client-utf8.ps1') -ExePath $proxy.FullName
+}
+foreach ($name in @('zstd.exe','unzstd.exe')) {
+    & (Join-Path $scriptDir 'set-client-utf8.ps1') -ExePath (Join-Path $StagingDir ('deps\zstd\'+$name))
 }
 
 # A shortcut's IconLocation only styles the shortcut. Once Emacs is running, the
@@ -340,6 +363,13 @@ $checks = @(
     @{ path = 'deps\git\usr\bin\sh.exe';    why = 'lets bin/doom run without Git Bash installed' },
     @{ path = 'deps\git\usr\bin\which.exe'; why = 'Magit Git for Windows executable discovery' },
     @{ path = 'deps\git\usr\bin\cygpath.exe'; why = 'Magit Windows/MSYS path conversion' },
+    @{ path = 'deps\git\usr\bin\bash.exe'; why = 'native Bash, not the Windows WSL launcher' },
+    @{ path = 'deps\git\usr\bin\gzip.exe'; why = 'compressed files and persistent undo fallback' },
+    @{ path = 'deps\zstd\zstd.exe';          why = 'persistent undo .zst files' },
+    @{ path = 'deps\xz\bin_x86-64\xz.exe';  why = 'compressed .xz/.lzma files' },
+    @{ path = 'deps\7zip\x64\7za.exe';      why = 'Archive mode extraction and updates' },
+    @{ path = 'deps\shellcheck\shellcheck.exe'; why = 'default shell diagnostics' },
+    @{ path = 'deps\pandoc\pandoc.exe';     why = 'default Markdown preview/export' },
     @{ path = 'fonts\manifest.json';        why = 'font inventory generated from pinned archives' },
     @{ path = 'doom\bin\doom';              why = 'the Doom CLI itself' },
     @{ path = 'doom\lisp\doom.el';          why = 'Doom core' },
