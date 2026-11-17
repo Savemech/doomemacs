@@ -1,41 +1,66 @@
 #+TITLE: Experimental Windows installer
 
-This directory proposes a native Windows x86_64 installer. It is not an official
-binary distribution. Framework code and modules are used without installer
-specific patches. Initial package synchronization requires internet access.
+This fork maintains an experimental native Windows x86_64 installer. It is not an official Doom binary distribution. Framework code and modules are used without installer specific patches. Initial package synchronization requires internet access.
 
 * Build
 
-Requirements: Windows 10 or newer, Windows PowerShell 5.1, Git, 7-Zip, NSIS 3.11 or newer,
-and approximately 4 GB free for archives, staging and installer output. Build
-tools and archives are ignored by Git; do not commit generated executables.
-
-Initialize the module checkout before building:
+Requirements: Windows 10 or newer, Windows PowerShell 5.1, Git, =just=, Windows =curl.exe= and =tar.exe=. Full 7-Zip is required for release archive verification. Allow at least 6 GB for downloads, one workspace and output, and more when retaining old workspaces or running WSL tests. Build tools, archives and executables are ignored by Git.
 
 #+begin_src powershell
-git submodule update --init sources/doom+
-.\installer\build\build-installer.ps1
+just                    # list commands; does not start a build
+just init               # exact module gitlink, never latest
+just bootstrap          # pinned portable NSIS, zstd and 7zr
+just doctor
+just versions
+just build-fast         # complete uncompressed development installer
+just test               # focused checks + compiled NSIS lifecycle fixture
+just test-runtime       # real native compilation, bundled Git and GUI client
 #+end_src
 
-The build verifies the archives against =build/payloads.lock.json=, extracts them
-to a staging directory outside the checkout, and compiles =doom.nsi=. The module
-checkout must match the lockfile. When updating the upstream module gitlink,
-update the lockfile's =doom.submodule.sha= too.
+Builds use =build/payloads.lock.json= and never select newer runtime versions implicitly. =build/release.json= contains the Windows revision; Doom's version comes from =.doom=. Emacs version labels, PE version fields and the font inventory are generated from these inputs. MinGit and its PortableGit support tools update together; GCC and libgccjit must match. A =build-info.json= in the bundle records the complete lock and source fingerprint.
 
-NSIS must be on PATH or installed under Program Files. A portable NSIS 3.11
-installation at =build/tools/nsis-3.11/= is also recognized. The fetch stage
-downloads zstd as a build-only tool for MSYS2 archives.
+By default workspaces live under =%LOCALAPPDATA%\doom-installer-build\repo-HASH\staging-HASH=. Set =$env:DOOM_BUILD_ROOT = 'W:\2WS\doom-emacs-build'= before invoking recipes to use another drive. Sources and payload pins select the workspace; a new input set gets a fresh directory, avoiding DLLs left by an older toolchain. Only Git-tracked framework/module sources and installer assets are copied; use =git add= for new files before staging. Ignored caches and personal configs are excluded.
 
-To recompile an existing staging tree:
+=just fetch= downloads and verifies archives only. =just stage= assembles the payload. =just compile-fast= recompiles an existing workspace after editing installer scripts/UI; =just build-fast= also restages assets. Management scripts are embedded from source at compile time. Interrupted or contaminated workspaces are refused; =just restage= renames the owned directory to a sibling =.kept-...= directory, retaining all its files, then stages again. Unknown directories and installed runtime trees are never adopted automatically. There is no recursive cleanup recipe; retained builds require deliberate manual removal.
+
+The PowerShell entry points remain available without =just=, for example =.\installer\build\build-installer.ps1 -SkipCompress=. =just= is a command index; the same scripts drive CI.
+
+* Maintenance every few months
+
+Commit current work first. Upstream fetch/merge, dependency discovery, pin changes and building are separate operations:
 
 #+begin_src powershell
-.\installer\build\build-installer.ps1 -Stages compile
-# Fast, large executable for local iteration:
-.\installer\build\build-installer.ps1 -Stages compile -SkipCompress
+just upstream-fetch
+just upstream-merge origin/master
+just pin-modules
+just updates                      # discover; no pin changes
+just update emacs                 # latest stable GNU UCRT64 archive
+just update git                   # MinGit + matching PortableGit
+just update toolchain             # coherent MSYS2 runtime dependency closure
+just update ripgrep
+just update fd
+just update fonts
+# Or: just update all
+# An explicit release is also accepted, e.g. just update emacs 31.1
+git diff
+just bump-release                 # once per new Windows release
+just doctor
+just build-fast
+just test
+just test-runtime
+just test-wsl Ubuntu-20.04         # optional; explicitly choose your distro
+# Review and commit sources, pins and Windows revision, then:
+just release                      # checks, compressed build, runtime checks, 7z verification
+just artifacts                    # paths + SHA256; does not publish
 #+end_src
 
-Management scripts are embedded from source at compile time, so stale staging
-cannot omit the install engine or uninstaller.
+=upstream-merge= defaults to =origin/master=; this fork uses =origin= for upstream and =fork= for its GitHub remote. Supply another ref if your remotes differ. It requires a clean branch and creates a backup branch before merging. Merge conflicts are left for manual resolution; it never resets or cleans your working tree. =pin-modules= aligns the lock with the committed gitlink after the merge; =init= checks out that gitlink without forcing local module changes away.
+
+=updates= reads release metadata and, for MSYS2, retains a downloaded repository snapshot. =update= prepares candidate pins, downloads changed archives and verifies their SHA256 before replacing the lock atomically; a failure keeps the previous lock. The previous JSON is also retained in the ignored cache. Updates are not installed into your running Emacs. Review the diff, run tests and commit the lock to Git. Downgrading dependency pins means restoring a reviewed lock from Git and building again; this does not implement rollback of an installed application or its package data.
+
+The MSYS2 updater resolves GCC/libgccjit, binutils, CRT, pthreads and their runtime dependencies from one repository snapshot, including current/legacy CRT package names. It supports unversioned and exact-version dependencies; unsupported constraints or unresolved dependencies stop the update for review. It is deliberately not a general pacman replacement. Later MSYS2 archives may disappear from mirrors: preserve verified archives when reproducibility across long periods matters. Build tool updates are separately reviewed edits to =buildTools= in the lock; =bootstrap= never follows latest.
+
+=test-runtime= compiles and executes a small native Lisp function with the bundled Emacs/toolchain, checks Git's shell utilities with host Git removed from PATH, and opens an isolated GUI client session. Tests use temporary homes. =test-wsl= additionally retains an isolated runtime copy and uses temporary Linux homes; it does not install shell integration into your real WSL profile. A release requires a clean committed checkout and full 7-Zip; no recipe installs into your personal Emacs, publishes a GitHub release, or merges upstream automatically.
 
 * Package compilation and reinstall speed
 

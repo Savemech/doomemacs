@@ -4,7 +4,7 @@ cache/
 dist/
 # Resumable driver checkpoints — machine-local
 build/state.json
-# Build-only tools fetched by fetch-payloads.ps1 (zstd.exe); never shipped
+# Pinned build-only tools fetched by fetch-build-tools.ps1; never shipped
 build/tools/
 # Run logs
 *.log

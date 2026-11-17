@@ -1,7 +1,8 @@
 Additional Git shell utilities
 
-which.exe and cygpath.exe come unchanged from PortableGit 2.55.0.5 x86_64:
-https://github.com/git-for-windows/git/releases/tag/v2.55.0.windows.5
+which.exe and cygpath.exe come unchanged from the PortableGit x86_64 release
+matching the bundled MinGit. See build-info.json in the installation root for
+the exact release URL, version and archive SHA-256.
 
 The archive and its SHA-256 are recorded in the installer payload lockfile.
 The matching MinGit distribution provides their MSYS runtime.

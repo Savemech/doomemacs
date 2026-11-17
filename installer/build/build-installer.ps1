@@ -7,16 +7,15 @@
 
         fetch-payloads.ps1  ->  stage-payloads.ps1  ->  makensis  ->  dist\*.exe
 
-    Every stage is idempotent and records itself in build\state.json, so a re-run
-    after a failure resumes rather than restarting. That matters here because
-    staging moves 1.4 GB and the NSIS solid-LZMA compress takes ten minutes or
-    more; nobody should pay that twice for a one-line script change.
+    Sources and pins select an isolated staging workspace. Completed payloads
+    can be reused; an interrupted workspace is retained by just restage.
+    build\state.json records results, but never skips integrity checks.
 
 .PARAMETER Stages
     Run only these stages: fetch, stage, compile. Default is all three.
 
 .PARAMETER Clean
-    Ignore state.json and redo everything.
+    Reset build history. Does not delete workspaces or force archive extraction.
 
 .PARAMETER SkipCompress
     Build with NSIS compression off. Produces a huge .exe in about a minute
@@ -35,7 +34,7 @@ param(
     [switch]$SkipCompress,
     [string]$StagingDir,
     [string]$OutDir,
-    [string]$Version
+    [ValidatePattern('^$|^[A-Za-z0-9][A-Za-z0-9._+-]*$')][string]$Version
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,8 +44,10 @@ $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $installerDir = (Resolve-Path (Join-Path $scriptDir '..')).Path
 $repoRoot     = (Resolve-Path (Join-Path $installerDir '..')).Path
+. (Join-Path $scriptDir 'build-context.ps1')
+$context = Get-DoomBuildContext -Repo $repoRoot
 
-if (-not $StagingDir) { $StagingDir = Join-Path $env:LOCALAPPDATA 'doom-installer-build\staging' }
+if (-not $StagingDir) { $StagingDir = $context.Stage }
 if (-not $OutDir)     { $OutDir     = Join-Path $installerDir 'dist' }
 
 $stateFile = Join-Path $scriptDir 'state.json'
@@ -70,14 +71,7 @@ function Get-State {
 function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content -Path $stateFile -Encoding utf8 }
 
 function Find-MakeNsis {
-    $c = Get-Command makensis.exe -ErrorAction SilentlyContinue
-    if ($c) { return $c.Source }
-    foreach ($p in @(
-        (Join-Path $scriptDir 'tools\nsis-3.11\makensis.exe'),
-        "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
-        "$env:ProgramFiles\NSIS\makensis.exe"
-    )) { if (Test-Path $p) { return $p } }
-    throw 'makensis.exe not found. Install NSIS: winget install --id NSIS.NSIS'
+    return Get-DoomBuildToolPath -InstallerDir $installerDir -Lock $context.Lock -Id 'nsis'
 }
 
 # ---------------------------------------------------------------------- main
@@ -95,14 +89,7 @@ if (-not $Version) {
     # The version lives in the .doom file at the repo root, not in a defconst --
     # upstream replaced the doom-version variable with a function that reads it
     # from there. Matching on lisp/doom.el silently yielded 0.0.0 for every build.
-    $verFile = Join-Path $repoRoot '.doom'
-    $Version = '0.0.0'
-    if (Test-Path $verFile) {
-        foreach ($line in (Get-Content $verFile -TotalCount 4 -ErrorAction SilentlyContinue)) {
-            if ($line -match '"([0-9]+\.[0-9]+[^"]*)"') { $Version = $Matches[1]; break }
-        }
-    }
-    if ($Version -eq '0.0.0') { Write-Info "WARNING: could not read version from $verFile" }
+    $Version = $context.Version
 }
 Write-Info "version   : $Version"
 
@@ -110,6 +97,7 @@ Write-Info "version   : $Version"
 
 if ($Stages -contains 'fetch') {
     Write-Head 'Stage 1/3  fetch payloads'
+    & (Join-Path $scriptDir 'fetch-build-tools.ps1')
     & (Join-Path $scriptDir 'fetch-payloads.ps1')
     if ($LASTEXITCODE -ne 0) { Write-Bad 'payload fetch failed'; exit 1 }
     $state['fetch'] = @{ at = (Get-Date).ToUniversalTime().ToString('o') }
@@ -130,6 +118,7 @@ if ($Stages -contains 'stage') {
         Copy-Item (Join-Path $installerDir $f) (Join-Path $StagingDir $f) -Force
     }
     Write-Ok 'install/uninstall scripts and shared PATH helper staged alongside payload'
+    Save-DoomStageInventory $StagingDir
 
     $sz = (Get-ChildItem $StagingDir -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
     $state['stage'] = @{ at = (Get-Date).ToUniversalTime().ToString('o'); bytes = $sz }
@@ -143,6 +132,7 @@ if ($Stages -contains 'compile') {
     Write-Head 'Stage 3/3  compile installer'
 
     if (-not (Test-Path $StagingDir)) { Write-Bad "nothing staged at $StagingDir - run the stage step first"; exit 1 }
+    Initialize-DoomStage $context $StagingDir
     $nsi = Join-Path $installerDir 'doom.nsi'
     if (-not (Test-Path $nsi)) { Write-Bad "NSIS script not found: $nsi"; exit 1 }
 
@@ -165,6 +155,8 @@ if ($Stages -contains 'compile') {
     # Calling makensis directly from PowerShell with -D form avoids it entirely.
     $nsisArgs = @(
         "-DVERSION=$Version",
+        "-DEMACS_VERSION=$($context.EmacsVersion)",
+        "-DPRODUCT_VERSION=$($context.ProductVersion)",
         "-DSTAGING=$StagingDir",
         "-DOUTFILE=$outFile"
     )
@@ -174,7 +166,7 @@ if ($Stages -contains 'compile') {
     }
     $nsisArgs += $nsi
 
-    Write-Info 'compressing - this is the slow part, expect 10+ minutes'
+    if (-not $SkipCompress) { Write-Info 'compressing - this is the slow part, expect 10+ minutes' }
     & $makensis @nsisArgs
     if ($LASTEXITCODE -ne 0) { Write-Bad "makensis failed with exit code $LASTEXITCODE"; exit 1 }
 
@@ -195,7 +187,7 @@ if ($Stages -contains 'compile') {
 $sw.Stop()
 Write-Head 'Build complete'
 Write-Info "elapsed: $([math]::Round($sw.Elapsed.TotalMinutes,1)) min"
-if ($state['compile']) {
+if (($Stages -contains 'compile') -and $state['compile']) {
     Write-Host ''
     Write-Host "  $($state['compile'].file)" -ForegroundColor Green
     Write-Host ''

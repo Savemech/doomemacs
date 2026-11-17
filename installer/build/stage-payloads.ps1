@@ -3,17 +3,16 @@
     Extract verified payloads into the final install layout.
 
 .DESCRIPTION
-    Unpacks everything in installer/cache/ into installer/staging/, arranged exactly
-    as it will appear under the install root. NSIS then packs staging/ verbatim, so
-    what you can inspect here is what ships.
+    Unpacks pinned archives from installer/cache/ into an input-specific workspace
+    outside the checkout, arranged as it will appear under the install root.
 
     Archive roots are auto-detected rather than trusted from the lockfile: if every
     entry in a zip shares one top-level directory, that directory is stripped. The
     lockfile's stripRoot field is treated as advisory and a disagreement is reported,
     because hand-maintained flags drift (the Emacs entry was wrong on first writing).
 
-    Idempotent: a payload whose hash already appears in staging/.staged.json is
-    skipped, so re-running after a change re-extracts only what moved.
+    Completed workspaces reuse payloads recorded in .staged.json. Changed source
+    or lock inputs select a fresh workspace; interrupted workspaces are retained.
 
 .PARAMETER Force
     Re-extract everything, ignoring .staged.json.
@@ -37,6 +36,9 @@ $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 if (-not $LockFile)   { $LockFile   = Join-Path $scriptDir 'payloads.lock.json' }
 if (-not $CacheDir)   { $CacheDir   = Join-Path $scriptDir '..\cache' }
+. (Join-Path $scriptDir 'build-context.ps1')
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptDir '..\..'))
+$context = Get-DoomBuildContext -Repo $repoRoot -LockFile $LockFile
 
 # Staging deliberately lives OUTSIDE the repo. Staged inside it, `doom version`
 # reported our own dev branch: git discovery walked up out of staging/doom and
@@ -44,7 +46,8 @@ if (-not $CacheDir)   { $CacheDir   = Join-Path $scriptDir '..\cache' }
 # with. That is precisely the "passes because of contamination" failure the test
 # harness exists to prevent, so the default keeps 1.4GB of payload out of the
 # working tree entirely.
-if (-not $StagingDir) { $StagingDir = Join-Path $env:LOCALAPPDATA 'doom-installer-build\staging' }
+if (-not $StagingDir) { $StagingDir = $context.Stage }
+Initialize-DoomStage $context $StagingDir
 
 function Write-Stage([string]$m) { Write-Host ''; Write-Host "==> $m" -ForegroundColor Cyan }
 function Write-Ok([string]$m)    { Write-Host "    OK    $m" -ForegroundColor Green }
@@ -127,7 +130,9 @@ function Expand-Msys2Payload {
     try {
         & $Zstd -d -q -f -o $tmpTar $Archive
         if ($LASTEXITCODE -ne 0) { throw "zstd failed with exit code $LASTEXITCODE" }
-
+        $entries=@(& $sysTar -tf $tmpTar)
+        if ($LASTEXITCODE) { throw 'Cannot inspect native package archive.' }
+        if (-not @($entries | Where-Object { $_ -match '^ucrt64/' }).Count) { return 0 }
         & $sysTar -xf $tmpTar -C $Dest --strip-components=1 ucrt64
         if ($LASTEXITCODE -ne 0) { throw "bsdtar failed with exit code $LASTEXITCODE" }
     } finally {
@@ -140,9 +145,7 @@ function Expand-Msys2Payload {
 
 function Expand-PortableGitTools {
     param([string]$Archive, [string]$Dest, [string[]]$Files)
-    $sevenZip = Get-Command 7z.exe -ErrorAction SilentlyContinue
-    $programFilesZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
-    $exe = if ($sevenZip) { $sevenZip.Source } elseif (Test-Path -LiteralPath $programFilesZip) { $programFilesZip } else { throw '7-Zip is required to extract the pinned PortableGit support tools.' }
+    $exe = Get-DoomBuildToolPath -InstallerDir (Split-Path -Parent $scriptDir) -Lock $lock -Id '7zr'
     # Extract as an archive; never execute PortableGit's self-extracting program.
     & $exe x -y -bso0 -bsp0 "-o$Dest" $Archive @Files
     if ($LASTEXITCODE) { throw "PortableGit support extraction failed ($LASTEXITCODE)." }
@@ -160,10 +163,10 @@ if (-not (Test-Path $LockFile)) { throw "Lockfile not found: $LockFile" }
 $lock = Get-Content $LockFile -Raw | ConvertFrom-Json
 $CacheDir = (Resolve-Path $CacheDir).Path
 
-$zstd = Join-Path $scriptDir 'tools\zstd.exe'
+$zstd = Get-DoomBuildToolPath -InstallerDir (Split-Path -Parent $scriptDir) -Lock $lock -Id 'zstd'
 $needZstd = @($lock.payloads | Where-Object { $_.filename -like '*.zst' }).Count -gt 0
 if ($needZstd -and -not (Test-Path $zstd)) {
-    throw "zstd.exe not found at $zstd. Run fetch-payloads.ps1 first - MSYS2 payloads cannot be extracted without it."
+    throw "zstd.exe not found at $zstd. Run just bootstrap first."
 }
 
 if (-not (Test-Path $StagingDir)) { New-Item -ItemType Directory -Force -Path $StagingDir | Out-Null }
@@ -231,34 +234,31 @@ if ($LASTEXITCODE -ne 0 -or $moduleRevision -ne $lock.doom.submodule.sha) {
     throw 'The Doom module checkout does not match payloads.lock.json. Initialize the pinned submodule before building.'
 }
 
-# robocopy rather than git archive: git archive skips submodules, and
-# sources/doom+ IS the module tree. Exclude .git (the installed copy is not a
-# checkout), installer/ (build machinery, not shipped) and CI config.
-# robocopy exit codes below 8 are success; 8+ are real failures.
-$rc = Start-Process -FilePath 'robocopy.exe' -ArgumentList @(
-    "`"$repoRoot`"", "`"$doomDest`"", '/MIR', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1',
-    '/XD', "`"$repoRoot\.git`"", "`"$repoRoot\installer`"", "`"$repoRoot\.github`"",
-    '/XF', '.git', '.gitmodules', '.gitignore'
-) -NoNewWindow -Wait -PassThru
-if ($rc.ExitCode -ge 8) {
-    Write-Bad "robocopy failed with exit code $($rc.ExitCode)"
-    $failed += 'doom'
-} else {
-    $n = (Get-ChildItem $doomDest -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
-    Write-Ok "$n files"
+# Copy tracked sources, including the module checkout. New inputs get a new
+# workspace; never mirror-delete an existing directory or ship ignored caches.
+foreach ($relative in $context.Sources) {
+    $target = Join-Path $doomDest $relative
+    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot $relative) -Destination $target -Force
 }
+Write-Ok "$($context.Sources.Count) tracked source files"
 
 Write-Stage 'shims -> bin'
-$filesSrc = Join-Path $scriptDir '..\files'
-if (Test-Path $filesSrc) {
-    $rc2 = Start-Process -FilePath 'robocopy.exe' -ArgumentList @(
-        "`"$((Resolve-Path $filesSrc).Path)`"", "`"$StagingDir`"", '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1'
-    ) -NoNewWindow -Wait -PassThru
-    if ($rc2.ExitCode -ge 8) { Write-Bad "robocopy failed with exit code $($rc2.ExitCode)"; $failed += 'shims' }
-    else { Write-Ok 'staged' }
-} else {
-    Write-Warn "no files/ directory at $filesSrc"
+foreach ($source in @(& git -C $repoRoot -c core.quotepath=false ls-files installer/files)) {
+    $target = Join-Path $StagingDir $source.Substring('installer/files/'.Length)
+    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repoRoot $source) -Destination $target -Force
 }
+if ($LASTEXITCODE) { throw 'Cannot enumerate installer assets.' }
+$fonts = foreach ($p in @($lock.payloads | Where-Object fontFamily)) {
+    foreach ($file in @($p.files | Where-Object { $_ -like '*.ttf' })) {
+        $relative = $p.installSubdir.Substring('fonts/'.Length) + '/' + $file
+        $path = Join-Path $StagingDir ($p.installSubdir + '/' + $file)
+        [pscustomobject]@{file=$relative;family=$p.fontFamily;sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}
+    }
+}
+Write-DoomJson (Join-Path $StagingDir 'fonts\manifest.json') @{schema=1;fonts=@($fonts)}
+Write-DoomJson (Join-Path $StagingDir 'build-info.json') @{schema=1;fingerprint=$context.Fingerprint;lock=$lock}
 
 Write-Stage 'Configuring bundled git'
 
@@ -301,9 +301,8 @@ $icoSrc = Join-Path (Resolve-Path (Join-Path $scriptDir '..')).Path 'files\doom.
 
 if (Test-Path $icoSrc) {
     $setIcon = Join-Path $scriptDir 'set-exe-icon.ps1'
-    # emacs.exe is what owns the visible window; runemacs.exe is what the shortcut
-    # launches; emacs-31.1.exe is the versioned duplicate Emacs ships.
-    foreach ($exe in @('emacs\bin\emacs.exe', 'emacs\bin\runemacs.exe', 'emacs\bin\emacs-31.1.exe')) {
+    $emacsVersion = @($lock.payloads | Where-Object id -eq 'emacs')[0].version
+    foreach ($exe in @('emacs\bin\emacs.exe', 'emacs\bin\runemacs.exe', "emacs\bin\emacs-$emacsVersion.exe")) {
         $full = Join-Path $StagingDir $exe
         if (Test-Path $full) {
             try {
@@ -341,8 +340,7 @@ $checks = @(
     @{ path = 'deps\git\usr\bin\sh.exe';    why = 'lets bin/doom run without Git Bash installed' },
     @{ path = 'deps\git\usr\bin\which.exe'; why = 'Magit Git for Windows executable discovery' },
     @{ path = 'deps\git\usr\bin\cygpath.exe'; why = 'Magit Windows/MSYS path conversion' },
-    @{ path = 'fonts\Meslo-v3.5.1\MesloLGMNerdFont-Regular.ttf'; why = 'bundled editor font' },
-    @{ path = 'fonts\Symbols-v3.5.1\SymbolsNerdFontMono-Regular.ttf'; why = 'nerd-icons glyph font' },
+    @{ path = 'fonts\manifest.json';        why = 'font inventory generated from pinned archives' },
     @{ path = 'doom\bin\doom';              why = 'the Doom CLI itself' },
     @{ path = 'doom\lisp\doom.el';          why = 'Doom core' },
     @{ path = 'doom\sources\doom+\modules'; why = 'the module tree (submodule)' },
@@ -362,6 +360,7 @@ foreach ($c in $checks) {
 
 if ($failed.Count -gt 0) { Write-Bad "failed to stage: $($failed -join ', ')"; exit 1 }
 if ($missing -gt 0)      { Write-Bad "$missing expected file(s) missing from staging"; exit 1 }
+Save-DoomStageInventory $StagingDir
 
 Write-Host ''
 Write-Ok 'Staging complete and sane.'

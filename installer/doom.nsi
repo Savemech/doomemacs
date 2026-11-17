@@ -15,6 +15,12 @@ Unicode true
 !ifndef VERSION
   !define VERSION "0.0.0"
 !endif
+!ifndef EMACS_VERSION
+  !define EMACS_VERSION "bundled"
+!endif
+!ifndef PRODUCT_VERSION
+  !define PRODUCT_VERSION "1.0.0.0"
+!endif
 !ifndef STAGING
   !error "STAGING not defined. Build via build-installer.ps1, not makensis directly."
 !endif
@@ -125,7 +131,7 @@ Var ConfigStatus
 !define MUI_UNICON "files\doom.ico"
 
 !define MUI_WELCOMEPAGE_TITLE "${PRODUCT} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "This installs ${PRODUCT}, GNU Emacs 31.1, git, ripgrep, fd, and a native-compilation toolchain.$\r$\n$\r$\nInternet access is required to download Emacs packages during setup.$\r$\n$\r$\nIt installs for your user account only, without administrator rights.$\r$\n$\r$\nIf Doom is already installed, the next page offers reinstall or removal. Your existing Doom configuration is kept."
+!define MUI_WELCOMEPAGE_TEXT "This installs ${PRODUCT}, GNU Emacs ${EMACS_VERSION}, git, ripgrep, fd, and a native-compilation toolchain.$\r$\n$\r$\nInternet access is required to download Emacs packages during setup.$\r$\n$\r$\nIt installs for your user account only, without administrator rights.$\r$\n$\r$\nIf Doom is already installed, the next page offers reinstall or removal. Your existing Doom configuration is kept."
 
 !define MUI_COMPONENTSPAGE_SMALLDESC
 !insertmacro MUI_PAGE_WELCOME
@@ -154,7 +160,7 @@ UninstPage custom un.ConfigLocationCreate
 
 !insertmacro MUI_LANGUAGE "English"
 
-VIProductVersion "1.0.0.0"
+VIProductVersion "${PRODUCT_VERSION}"
 VIAddVersionKey "ProductName"     "${PRODUCT}"
 VIAddVersionKey "FileDescription" "${PRODUCT} installer"
 VIAddVersionKey "FileVersion"     "${VERSION}"
@@ -508,7 +514,7 @@ Section "Doom Emacs" SecMain
 
   DetailPrint "Unpacking Emacs, Doom and dependencies (about 1.4 GB)..."
   SetOutPath "$INSTDIR"
-  File /r "${STAGING}\*.*"
+  File /r /x ".doom-build-stage.json" /x ".build-inventory.json" "${STAGING}\*.*"
   ; Always overwrite any stale scripts shipped in the staging tree.
   CopyFiles /SILENT "$PLUGINSDIR\*.ps1" "$INSTDIR"
   CreateDirectory "$INSTDIR\bridge"
@@ -628,7 +634,7 @@ Section "-Configure" SecConfigure
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}      "Emacs 31.1, Doom, git, ripgrep, fd and a native-compilation toolchain. Everything needed to run, with no other downloads. Required."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}      "Emacs ${EMACS_VERSION}, Doom, git, ripgrep, fd and a native-compilation toolchain. Everything needed to run, with no other downloads. Required."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecAOT}       "Natively compile every package during installation, so Doom is fast from the very first launch. Leave this off and packages compile gradually in the background over your first few sessions instead. Roughly doubles how long installation takes."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop}   "Put a Doom Emacs shortcut on your Desktop."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} "Put a Doom Emacs shortcut in your Start Menu."

@@ -16,7 +16,7 @@ function Get-DoomRuntimeSignature {
     if (Test-Path -LiteralPath $markerPath) {
         $marker = Get-Content -LiteralPath $markerPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $toolchain = (@($marker.PSObject.Properties | Where-Object {
-            $_.Name -in @('emacs', 'libgccjit', 'gcc', 'binutils', 'crt', 'winpthreads')
+            $_.Name -in @('emacs', 'libgccjit', 'gcc', 'binutils', 'crt', 'winpthreads') -or $_.Name -like 'ucrt-*'
         } | Sort-Object Name | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ';')
     }
     $signature | Add-Member -NotePropertyName toolchain -NotePropertyValue $toolchain

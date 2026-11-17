@@ -145,7 +145,8 @@
                                        "MesloLGMNerdFont-BoldItalic.ttf",
                                        "LICENSE.txt",
                                        "README.md"
-                                   ]
+                                   ],
+                         "fontFamily":  "MesloLGM Nerd Font"
                      },
                      {
                          "id":  "symbols-font",
@@ -164,7 +165,8 @@
                                        "SymbolsNerdFontMono-Regular.ttf",
                                        "LICENSE",
                                        "README.md"
-                                   ]
+                                   ],
+                         "fontFamily":  "Symbols Nerd Font Mono"
                      },
                      {
                          "id":  "git-shell-tools",
@@ -195,7 +197,28 @@
                            "filename":  "zstd-v1.5.7-win64.zip",
                            "sha256":  "acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9",
                            "extractTo":  "build/tools",
-                           "extractMember":  "*/zstd.exe"
+                           "extractMember":  "*/zstd.exe",
+                           "directory":  "zstd-1.5.7",
+                           "command":  "zstd.exe"
+                       },
+                       {
+                           "id":  "nsis",
+                           "version":  "3.11",
+                           "url":  "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip",
+                           "filename":  "nsis-3.11.zip",
+                           "sha256":  "c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1",
+                           "directory":  "nsis-3.11",
+                           "command":  "makensis.exe",
+                           "stripRoot":  true
+                       },
+                       {
+                           "id":  "7zr",
+                           "version":  "26.06",
+                           "url":  "https://github.com/ip7z/7zip/releases/download/26.06/7zr.exe",
+                           "filename":  "7zr-26.06.exe",
+                           "sha256":  "e80db2dad715a6c5adabe292d31ed54e11f4e9b99ca349827b50573b175891bc",
+                           "directory":  "7zr-26.06",
+                           "command":  "7zr.exe"
                        }
                    ],
     "doom":  {
